@@ -1,57 +1,28 @@
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  phone_number: string | null; // Use null if the field can be empty
-  selected_role: "customer" | "manager" | "owner";
-  created_at: string;
-}
+'use client';
 
-export default async function Home() {
-  let isAlive = false;
-  let data = null;
+import { useState } from 'react';
+import Header from '@/components/Header';
+import Navigation from '@/components/Navigation';
+import DashboardHome from '@/components/dashboard/DashboardHome';
+import ProjectsPage from '@/components/pages/ProjectsPage';
+import WorkersPage from '@/components/pages/WorkersPage';
+import UsersPage from '@/components/pages/UsersPage';
 
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/health`, {
-      cache: "no-store",
-    });
-
-    const userDataTest = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/user`,
-      {
-        cache: "no-store",
-      },
-    );
-
-    data = await userDataTest.json();
-    isAlive = res.ok;
-  } catch {
-    isAlive = false;
-  }
+export default function Home() {
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'projects' | 'workers' | 'users'>('dashboard');
+  const [userRole, setUserRole] = useState<'customer' | 'worker' | 'manager' | 'owner'>('manager');
 
   return (
-    <div>
-      {isAlive ? (
-        <h1 className="text-2xl font-bold">Groundwork API is alive!</h1>
-      ) : (
-        <h1 className="text-2xl font-bold text-red-500">
-          Groundwork API is not responding.
-        </h1>
-      )}
-      <ul>
-        {data ? (
-          data.map((item: User) => {
-            return (
-              <li key={item.id}>
-                Name: {item.name}, Email: {item.email}, Phone:{" "}
-                {item.phone_number}, Role: {item.selected_role}
-              </li>
-            );
-          })
-        ) : (
-          <li>No user data available.</li>
-        )}
-      </ul>
+    <div className="min-h-screen bg-color-background">
+      <Header role={userRole} onRoleChange={setUserRole} />
+      <Navigation currentPage={currentPage} onPageChange={setCurrentPage} userRole={userRole} />
+      
+      <main className="p-6 md:p-8 max-w-7xl mx-auto">
+        {currentPage === 'dashboard' && <DashboardHome role={userRole} />}
+        {currentPage === 'projects' && <ProjectsPage role={userRole} />}
+        {currentPage === 'workers' && <WorkersPage role={userRole} />}
+        {currentPage === 'users' && <UsersPage role={userRole} />}
+      </main>
     </div>
   );
 }
