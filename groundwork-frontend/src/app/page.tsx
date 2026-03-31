@@ -9,21 +9,12 @@ interface User {
 
 export default async function Home() {
   let isAlive = false;
-  let data = null;
 
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/health`, {
       cache: "no-store",
     });
 
-    const userDataTest = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/user`,
-      {
-        cache: "no-store",
-      },
-    );
-
-    data = await userDataTest.json();
     isAlive = res.ok;
   } catch {
     isAlive = false;
@@ -38,20 +29,6 @@ export default async function Home() {
           Groundwork API is not responding.
         </h1>
       )}
-      <ul>
-        {data ? (
-          data.map((item: User) => {
-            return (
-              <li key={item.id}>
-                Name: {item.name}, Email: {item.email}, Phone:{" "}
-                {item.phone_number}, Role: {item.selected_role}
-              </li>
-            );
-          })
-        ) : (
-          <li>No user data available.</li>
-        )}
-      </ul>
     </div>
   );
 }
