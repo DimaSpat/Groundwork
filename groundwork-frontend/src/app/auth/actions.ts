@@ -1,47 +1,123 @@
 "use server";
 
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+
 export interface User {
   name?: string;
-  email: string | null;
-  password: string | null;
+  email: string;
+  password?: string;
   phone?: string;
   role: "owner" | "manager" | "worker" | "customer";
-  location?: string | null | undefined;
-  created_at?: Date;
+  location?: string | null;
+  created_at?: string;
 }
-export type FormState = {
+
+export interface FormState {
   error: string | null;
-  role?: User["role"];
+  isReg: boolean;
   isLoading: boolean;
-};
+  fieldErrors?: {
+    email?: string;
+    password?: string;
+    name?: string;
+    phone?: string;
+    confirmPassword?: string;
+  };
+}
 
 export async function authUser(
   prevState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const name = formData.get("name") as string | null;
+  const isReg = formData.get("isReg") === "true";
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
-  const confirmPassword = formData.get("confirmPassword") as string | null;
-  const phone = formData.get("phone") as string | null;
-  const role = formData.get("role") as User["role"] | null;
-  const location = formData.get("location") as string | null;
 
-  const isRegister =
-    !!name && !!confirmPassword && !!phone && !!location && !!role;
+  // Validation
+  const errors: FormState["fieldErrors"] = {};
 
-  if (isRegister) {
-    return handleRegister(
-      name,
-      email,
-      password,
-      confirmPassword,
-      phone,
-      role,
-      location,
-    );
+  if (!email || !email.includes("@")) {
+    errors.email = "Valid email is required";
+  }
+  if (!password || password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+
+  if (isReg) {
+    const name = formData.get("name") as string;
+    const phone = formData.get("phone") as string;
+    const confirmPassword = formData.get("confirmPassword") as string;
+    const role = formData.get("role") as User["role"];
+
+    if (!name || name.length < 2) errors.name = "Name is required";
+    if (!phone || phone.length < 8) errors.phone = "Valid phone is required";
+    if (password !== confirmPassword)
+      errors.confirmPassword = "Passwords do not match";
+    if (!role) errors.name = "Role is required";
+
+    if (Object.keys(errors).length > 0) {
+      return {
+        error: "Please fix the errors below",
+        isReg: true,
+        isLoading: false,
+        fieldErrors: errors,
+      };
+    }
+
+    return handleRegister({ name, email, password, phone, role });
   } else {
+    if (Object.keys(errors).length > 0) {
+      return {
+        error: "Please fix the errors below",
+        isReg: false,
+        isLoading: false,
+        fieldErrors: errors,
+      };
+    }
     return handleLogin(email, password);
+  }
+}
+
+async function handleRegister(
+  userData: Omit<User, "created_at">,
+): Promise<FormState> {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/user/register`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...userData,
+          created_at: new Date().toISOString(),
+        }),
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        error: data.message || "Registration failed",
+        isReg: true,
+        isLoading: false,
+      };
+    }
+
+    if (data.token) {
+      await setAuthCookie(data.token);
+    }
+
+    redirect("/dashboard");
+  } catch (error) {
+    if (error instanceof Error && error.message === "NEXT_REDIRECT")
+      throw error;
+    return {
+      error: "Connection failed. Please try again.",
+      isReg: true,
+      isLoading: false,
+    };
   }
 }
 
@@ -49,12 +125,6 @@ async function handleLogin(
   email: string,
   password: string,
 ): Promise<FormState> {
-  if (!email || email.trim().length === 0) {
-    return { error: "Email is required.", isLoading: false };
-  } else if (!password || password.trim().length === 0) {
-    return { error: "Password is required. ", isLoading: false };
-  }
-
   try {
     const response = await fetch(
       `${process.env.NEXT_PUBLIC_API_URL}/user/login`,
@@ -65,99 +135,39 @@ async function handleLogin(
       },
     );
 
-    if (response.ok) {
-      return { error: null, isLoading: false };
-    } else {
-      const result = await response.json();
-      return { error: result.message || "Login failed", isLoading: false };
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        error: data.message || "Invalid credentials",
+        isReg: false,
+        isLoading: false,
+      };
     }
+
+    if (data.token) {
+      await setAuthCookie(data.token);
+    }
+
+    redirect("/dashboard");
   } catch (error) {
+    if (error instanceof Error && error.message === "NEXT_REDIRECT")
+      throw error;
     return {
-      error: `Could not connect to server. ${error}`,
+      error: "Connection failed. Please try again.",
+      isReg: false,
       isLoading: false,
     };
   }
 }
 
-async function handleRegister(
-  name: string,
-  email: string,
-  password: string,
-  confirmPassword: string,
-  phone: string,
-  role: User["role"],
-  location: string | null,
-): Promise<FormState> {
-  if (!name || name.trim().length === 0) {
-    return { error: "Full name is required.", role, isLoading: false };
-  } else if (!email || email.trim().length === 0) {
-    return { error: "Email is required.", role, isLoading: false };
-  } else if (!password || password.trim().length === 0) {
-    return { error: "Password is required.", role, isLoading: false };
-  } else if (password.length < 8) {
-    return {
-      error: "Password must be at least 8 characters long.",
-      role,
-      isLoading: false,
-    };
-  } else if (password !== confirmPassword) {
-    return {
-      error: "Passwords do not match.",
-      role,
-      isLoading: false,
-    };
-  } else if (!phone || phone.trim().length === 0) {
-    return {
-      error: "Phone number is required.",
-      role,
-      isLoading: false,
-    };
-  } else if (
-    role === "customer" &&
-    (!location || location.trim().length === 0)
-  ) {
-    return {
-      error: "Location is required for customers.",
-      role,
-      isLoading: false,
-    };
-  }
-
-  const newUser: User = {
-    name,
-    email,
-    password,
-    phone,
-    role,
-    location: role === "customer" ? location : undefined,
-    created_at: new Date(),
-  };
-
-  try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/user/register`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newUser),
-      },
-    );
-
-    if (response.ok) {
-      return { error: null, isLoading: false };
-    } else {
-      const result = await response.json();
-      return {
-        error: result.message || "Registration failed",
-        role,
-        isLoading: false,
-      };
-    }
-  } catch (error) {
-    return {
-      error: `Could not connect to the server, ${error}`,
-      role,
-      isLoading: false,
-    };
-  }
+async function setAuthCookie(token: string) {
+  const cookieStore = await cookies();
+  cookieStore.set("auth-token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+  });
 }
